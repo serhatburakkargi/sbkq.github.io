@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Butonlu Sayfa — Firebase Senkronize</title>
+<style>
+:root{
+  --bg:#0b0f17; --card:#0b1220; --accent:#00b894; --muted:#9fb0c8;
+  --btn:#142235; --input:#0f1724; --border:#1b2636;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter,system-ui,Roboto,-apple-system,Segoe UI,Arial;color:#e6eef8;
+background:linear-gradient(180deg,#051026 0%,var(--bg) 100%);display:flex;align-items:center;
+justify-content:center;min-height:100vh;padding:20px;}
+.container{width:100%;max-width:720px;padding:18px;border-radius:16px;background:var(--card);
+box-shadow:0 12px 40px rgba(2,6,23,0.6)}
+.header{display:flex;gap:12px;align-items:center;margin-bottom:14px}
+.logo{width:56px;height:56px;border-radius:12px;background:linear-gradient(180deg,rgba(255,255,255,0.03),transparent);
+display:flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.03)}
+.logo strong{color:var(--accent)}
+h1{font-size:18px;margin:0}
+.lead{font-size:13px;color:var(--muted);margin-top:4px}
+.buttons{display:flex;flex-direction:column;gap:12px;margin-top:12px}
+.btn{display:flex;align-items:center;gap:12px;padding:14px;border-radius:12px;
+background:var(--btn);border:1px solid rgba(255,255,255,0.02);cursor:pointer;overflow:hidden}
+.btn:hover{transform:translateY(-3px);transition:transform .15s}
+.icon{width:48px;height:48px;border-radius:10px;display:flex;align-items:center;justify-content:center;
+background:rgba(255,255,255,0.02);flex-shrink:0;font-size:20px}
+.label{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60%}
+.sublabel{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:35%}
+.editor{margin-top:16px;background:linear-gradient(180deg, rgba(255,255,255,0.01), rgba(0,0,0,0.02));
+padding:12px;border-radius:12px;border:1px solid rgba(255,255,255,0.02)}
+.row{display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
+input[type=text],select{flex:1;min-width:100px;padding:8px;border-radius:8px;border:1px solid var(--border);
+background:var(--input);color:#fff;font-size:13px}
+button.small{padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--input);color:#fff;cursor:pointer}
+.controls{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;justify-content:space-between;align-items:center}
+.footer{margin-top:12px;font-size:12px;color:var(--muted);text-align:center}
+@media(max-width:480px){
+  .label{max-width:50%}
+  .sublabel{max-width:40%}
+  input[type=text],select{min-width:70px}
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div class="logo"><strong>SB</strong></div>
+    <div>
+      <h1>Butonlu Sayfa</h1>
+      <div class="lead">Firebase ile eş zamanlı kaydedilen buton sayfası</div>
+    </div>
+  </div>
+
+  <div class="buttons" id="buttons"></div>
+
+  <div class="editor" id="editor">
+    <div style="font-weight:700;margin-bottom:8px">Butonları Düzenle</div>
+    <div id="edit-list"></div>
+    <div class="controls">
+      <div style="display:flex;gap:8px;align-items:center">
+        <button id="addBtn" class="small">Buton Ekle</button>
+        <button id="resetBtn" class="small">Sıfırla</button>
+      </div>
+      <div style="font-size:12px;color:var(--muted)">Değişiklikler buluta kaydedilir.</div>
+    </div>
+  </div>
+
+  <div class="footer">Veriler Firestore'da saklanır — cihazdan bağımsız.</div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.0/firebase-app.js";
+import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.14.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyC65Cce1RHW6rYA5W8ic76_-WHEUGbASHI",
+  authDomain: "sbkq-60ba0.firebaseapp.com",
+  projectId: "sbkq-60ba0",
+  storageBucket: "sbkq-60ba0.firebasestorage.app",
+  messagingSenderId: "753826053617",
+  appId: "1:753826053617:web:3d2e6d31e701248a139850",
+  measurementId: "G-K91Y6058BP"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const docRef = doc(db, "butonluSayfa", "data");
+
+const DEFAULTS = [
+  { id: 1, label: "Instagram", url: "https://www.instagram.com/sebukagraphic_", icon: "📷", type: "link" },
+  { id: 2, label: "E-posta", mail: "serhatbrkkrg@gmail.com", icon: "✉️", type: "mail" }
+];
+
+let data = [];
+
+function escapeHtml(s){ return s ? s.replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])) : ""; }
+
+function renderButtons(){
+  const c = document.getElementById("buttons");
+  c.innerHTML = "";
+  data.forEach(it=>{
+    const b = document.createElement("div");
+    b.className = "btn";
+    b.innerHTML = `<div class="icon">${escapeHtml(it.icon||"🔗")}</div>
+                   <div><div class="label">${escapeHtml(it.label||"")}</div>
+                   <div class="sublabel">${escapeHtml(it.url||it.mail||"")}</div></div>`;
+    b.onclick = ()=>openItem(it);
+    c.appendChild(b);
+  });
+}
+
+function openItem(it){
+  if(it.type==="mail" && it.mail) window.location.href="mailto:"+it.mail;
+  else if(it.url) window.open(it.url,"_blank");
+}
+
+function renderEditor(){
+  const el = document.getElementById("edit-list");
+  el.innerHTML = "";
+  data.forEach((it,i)=>{
+    const row = document.createElement("div");
+    row.className="row";
+    row.innerHTML = `
+      <input data-i="${i}" class="lbl" placeholder="Etiket" value="${it.label||''}" />
+      <input data-i="${i}" class="url" placeholder="https://..." value="${it.url||''}" />
+      <select data-i="${i}" class="typ">
+        <option value="link">Link</option>
+        <option value="mail">Mail</option>
+      </select>
+      <input data-i="${i}" class="icn" placeholder="ikon" value="${it.icon||'🔗'}" style="width:60px" />
+      <button data-i="${i}" class="small del">🗑</button>`;
+    el.appendChild(row);
+  });
+
+  el.querySelectorAll(".typ").forEach(s=>s.value=data[s.dataset.i].type);
+  attachHandlers();
+}
+
+function attachHandlers(){
+  document.querySelectorAll(".lbl").forEach(x=>x.oninput=e=>{data[x.dataset.i].label=e.target.value;saveData();});
+  document.querySelectorAll(".url").forEach(x=>x.oninput=e=>{data[x.dataset.i].url=e.target.value;saveData();});
+  document.querySelectorAll(".icn").forEach(x=>x.oninput=e=>{data[x.dataset.i].icon=e.target.value;saveData();});
+  document.querySelectorAll(".typ").forEach(x=>x.onchange=e=>{data[x.dataset.i].type=e.target.value;saveData();});
+  document.querySelectorAll(".del").forEach(b=>b.onclick=()=>{data.splice(b.dataset.i,1);saveData();});
+}
+
+async function saveData(){
+  try {
+    await setDoc(docRef, { buttons: data });
+    renderButtons();
+    renderEditor();
+  } catch(e){ console.error(e); }
+}
+
+async function loadData(){
+  const snap = await getDoc(docRef);
+  if(snap.exists()){
+    data = snap.data().buttons || DEFAULTS;
+  } else {
+    data = DEFAULTS;
+    await saveData();
+  }
+  renderButtons();
+  renderEditor();
+}
+
+document.getElementById("addBtn").onclick = ()=>{
+  data.push({id:Date.now(), label:"Yeni Buton", url:"", icon:"🔗", type:"link"});
+  saveData();
+};
+document.getElementById("resetBtn").onclick = async()=>{
+  if(confirm("Tüm butonları sıfırlamak istiyor musun?")){
+    data = DEFAULTS;
+    await saveData();
+  }
+};
+
+onSnapshot(docRef, (snap)=>{
+  if(snap.exists()){
+    data = snap.data().buttons || [];
+    renderButtons();
+    renderEditor();
+  }
+});
+
+loadData();
+</script>
+</body>
+</html>
